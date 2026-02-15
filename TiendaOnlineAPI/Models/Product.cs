@@ -1,4 +1,5 @@
 ﻿using System;
+using System.ComponentModel.DataAnnotations;
 namespace TiendaOnlineAPI.Models
 {
 	public class Product
@@ -8,6 +9,10 @@ namespace TiendaOnlineAPI.Models
 		public string Description { get; set; }
 		public decimal Price { get; set; }
 		public int Stock { get; set; }
+
+        [Timestamp]
+        public byte[] RowVersion { get; set; }
+
 
         public bool IsActive { get; set; } = true;
 

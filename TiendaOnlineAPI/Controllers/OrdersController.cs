@@ -23,59 +23,108 @@ public class OrdersController : ControllerBase
     {
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
 
-        var cart = await _context.Carts
-            .Include(c => c.Items)
-            .ThenInclude(i => i.Product)
-            .FirstOrDefaultAsync(c => c.UserId == userId);
+        if (string.IsNullOrEmpty(userId))
+            return Unauthorized();
 
-        if (cart == null || !cart.Items.Any())
-            return BadRequest("Carrito vacío");
+        using var transaction = await _context.Database.BeginTransactionAsync();
 
-        decimal total = 0;
-
-        var order = new Order
+        try
         {
-            UserId = userId,
-            Items = new List<OrderItem>()
-        };
+            var cart = await _context.Carts
+                .Include(c => c.Items)
+                .ThenInclude(i => i.Product)
+                .FirstOrDefaultAsync(c => c.UserId == userId);
 
-        foreach (var item in cart.Items)
-        {
-            if (item.Product.Stock < item.Quantity)
-                return BadRequest($"No hay suficiente stock para {item.Product.Name}");
+            if (cart == null || !cart.Items.Any())
+                return BadRequest("Carrito vacío");
 
-            item.Product.Stock -= item.Quantity;
-            total += item.Product.Price * item.Quantity;
+            decimal total = 0;
 
-            order.Items.Add(new OrderItem
+            var order = new Order
             {
-                ProductId = item.ProductId,
-                Quantity = item.Quantity,
-                Price = item.Product.Price
-            });
+                UserId = userId,
+                Items = new List<OrderItem>()
+            };
+
+            foreach (var item in cart.Items)
+            {
+                if (item.Product.Stock < item.Quantity)
+                    return BadRequest($"No hay suficiente stock para {item.Product.Name}");
+
+                item.Product.Stock -= item.Quantity;
+                total += item.Product.Price * item.Quantity;
+
+                order.Items.Add(new OrderItem
+                {
+                    ProductId = item.ProductId,
+                    Quantity = item.Quantity,
+                    Price = item.Product.Price
+                });
+            }
+
+            order.TotalAmount = total;
+
+            _context.Orders.Add(order);
+            _context.CartItems.RemoveRange(cart.Items);
+
+            await _context.SaveChangesAsync();
+            await transaction.CommitAsync();
+
+            var response = new OrderResponseDto
+            {
+                Id = order.Id,
+                CreatedAt = order.CreatedAt,
+                TotalAmount = order.TotalAmount,
+                Status = order.Status,
+                Items = order.Items.Select(i => new OrderItemResponseDto
+                {
+                    ProductId = i.ProductId,
+                    Quantity = i.Quantity,
+                    Price = i.Price
+                }).ToList()
+            };
+
+            return Ok(response);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            await transaction.RollbackAsync();
+            return Conflict("El producto fue modificado por otro usuario. Intenta nuevamente.");
+        }
+        catch (Exception)
+        {
+            await transaction.RollbackAsync();
+            return StatusCode(500, "Error en el proceso de checkout");
         }
 
-        order.TotalAmount = total;
+    }
 
-        _context.Orders.Add(order);
-        _context.CartItems.RemoveRange(cart.Items);
+
+    [HttpPost("{id}/cancel")]
+    public async Task<IActionResult> CancelOrder(int id)
+    {
+        var order = await _context.Orders
+            .Include(o => o.Items)
+            .FirstOrDefaultAsync(o => o.Id == id);
+
+        if (order == null)
+            return NotFound();
+
+        if (order.Status == "Cancelled")
+            return BadRequest("La orden ya está cancelada");
+
+        // Devolver stock
+        foreach (var item in order.Items)
+        {
+            var product = await _context.Products.FindAsync(item.ProductId);
+            product.Stock += item.Quantity;
+        }
+
+        order.Status = "Cancelled";
 
         await _context.SaveChangesAsync();
 
-        var response = new OrderResponseDto
-        {
-            Id = order.Id,
-            CreatedAt = order.CreatedAt,
-            TotalAmount = order.TotalAmount,
-            Status = order.Status,
-            Items = order.Items.Select(i => new OrderItemResponseDto
-            {
-                ProductId = i.ProductId,
-                Quantity = i.Quantity,
-                Price = i.Price
-            }).ToList()
-        };
-
-        return Ok(response);
+        return Ok("Orden cancelada correctamente");
     }
+
 }
