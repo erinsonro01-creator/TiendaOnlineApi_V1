@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using TiendaOnlineAPI.Data;
 using TiendaOnlineAPI.DTOs;
 using TiendaOnlineAPI.Models;
+using TiendaOnlineAPI.Models.Enums;
 
 [Authorize]
 [ApiController]
@@ -43,8 +44,10 @@ public class OrdersController : ControllerBase
             var order = new Order
             {
                 UserId = userId,
+                Status = OrderStatus.Pending,
                 Items = new List<OrderItem>()
             };
+
 
             foreach (var item in cart.Items)
             {
@@ -75,7 +78,7 @@ public class OrdersController : ControllerBase
                 Id = order.Id,
                 CreatedAt = order.CreatedAt,
                 TotalAmount = order.TotalAmount,
-                Status = order.Status,
+                Status = order.Status.ToString(),
                 Items = order.Items.Select(i => new OrderItemResponseDto
                 {
                     ProductId = i.ProductId,
@@ -110,7 +113,7 @@ public class OrdersController : ControllerBase
         if (order == null)
             return NotFound();
 
-        if (order.Status == "Cancelled")
+        if (order.Status == OrderStatus.Cancelled)
             return BadRequest("La orden ya está cancelada");
 
         // Devolver stock
@@ -120,11 +123,63 @@ public class OrdersController : ControllerBase
             product.Stock += item.Quantity;
         }
 
-        order.Status = "Cancelled";
+        order.Status = OrderStatus.Cancelled;
 
         await _context.SaveChangesAsync();
 
         return Ok("Orden cancelada correctamente");
     }
+
+    [HttpPost("{id}/pay")]
+    public async Task<IActionResult> PayOrder(int id)
+    {
+        using var transaction = await _context.Database.BeginTransactionAsync();
+
+        try
+        {
+            var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+
+            var order = await _context.Orders
+                .Include(o => o.Items)
+                .ThenInclude(i => i.Product)
+                .FirstOrDefaultAsync(o => o.Id == id && o.UserId == userId);
+
+            if (order == null)
+                return NotFound("Orden no encontrada");
+
+            if (order.Status != OrderStatus.Pending)
+                return BadRequest("La orden no está pendiente de pago");
+
+            // 🔹 Simulación de pago exitoso
+            var paymentSuccess = true;
+
+            if (!paymentSuccess)
+            {
+                foreach (var item in order.Items)
+                {
+                    item.Product.Stock += item.Quantity;
+                }
+
+                order.Status = OrderStatus.Cancelled;
+                await _context.SaveChangesAsync();
+                await transaction.CommitAsync();
+
+                return BadRequest("Pago fallido");
+            }
+
+            order.Status = OrderStatus.Paid;
+
+            await _context.SaveChangesAsync();
+            await transaction.CommitAsync();
+
+            return Ok("Pago realizado con éxito");
+        }
+        catch
+        {
+            await transaction.RollbackAsync();
+            return StatusCode(500, "Error procesando el pago");
+        }
+    }
+
 
 }
