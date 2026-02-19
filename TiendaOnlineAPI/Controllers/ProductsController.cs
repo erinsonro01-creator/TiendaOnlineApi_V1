@@ -24,13 +24,13 @@ namespace TiendaOnlineAPI.Controllers
         [HttpGet]
         [AllowAnonymous]
         public async Task<IActionResult> GetProducts(
-    string? search,
-    int? categoryId,
-    decimal? minPrice,
-    decimal? maxPrice,
-    string? sortBy,
-    int page = 1,
-    int pageSize = 10)
+            string? search,
+            int? categoryId,
+            decimal? minPrice,
+            decimal? maxPrice,
+            string? sortBy,
+            int page = 1,
+            int pageSize = 10)
         {
             var query = _context.Products
                 .Include(p => p.Category)

@@ -20,7 +20,7 @@ namespace TiendaOnlineAPI.Controllers
             _context = context;
         }
 
-        // 🛒 Obtener carrito del usuario
+        // Obtener carrito del usuario
         [HttpGet]
         public async Task<IActionResult> GetCart()
         {
@@ -51,7 +51,7 @@ namespace TiendaOnlineAPI.Controllers
             });
         }
 
-        // ➕ Agregar producto al carrito
+        // Agregar producto al carrito
         [HttpPost]
         public async Task<IActionResult> AddToCart(AddToCartDto dto)
         {
