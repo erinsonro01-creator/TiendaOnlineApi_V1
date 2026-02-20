@@ -60,11 +60,21 @@ namespace TiendaOnlineAPI.Controllers
             if (!isValid)
                 return Unauthorized("Credenciales inválidas");
 
-            var claims = new[]
+            // Obtener roles del usuario
+            var roles = await _userManager.GetRolesAsync(user);
+
+            // Crear lista de claims
+            var claims = new List<Claim>
+    {
+        new Claim(ClaimTypes.NameIdentifier, user.Id),
+        new Claim(ClaimTypes.Email, user.Email)
+    };
+
+            // Agregar roles al token
+            foreach (var role in roles)
             {
-                new Claim(ClaimTypes.NameIdentifier, user.Id),
-                new Claim(ClaimTypes.Email, user.Email)
-            };
+                claims.Add(new Claim(ClaimTypes.Role, role));
+            }
 
             var key = new SymmetricSecurityKey(
                 Encoding.UTF8.GetBytes(_configuration["Jwt:Key"]));
@@ -81,4 +91,5 @@ namespace TiendaOnlineAPI.Controllers
             });
         }
     }
+    
 }

@@ -19,7 +19,7 @@ public class OrdersController : ControllerBase
         _context = context;
     }
 
-    [HttpPost("checkout")]
+    [Authorize(Roles = "Customer,Admin")]
     public async Task<IActionResult> Checkout()
     {
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
@@ -102,21 +102,52 @@ public class OrdersController : ControllerBase
 
     }
 
+    [Authorize(Roles = "Customer,Admin")]
+    [HttpGet("all")]
+    public async Task<IActionResult> GetAllOrders()
+    {
+        var orders = await _context.Orders
+            .Include(o => o.Items)
+            .ThenInclude(i => i.Product)
+            .Include(o => o.User)
+            .ToListAsync();
 
+        var result = orders.Select(o => new
+        {
+            o.Id,
+            o.CreatedAt,
+            o.TotalAmount,
+            Status = o.Status.ToString(),
+            UserEmail = o.User.Email,
+            Items = o.Items.Select(i => new
+            {
+                i.ProductId,
+                ProductName = i.Product.Name,
+                i.Quantity,
+                i.Price
+            })
+        });
+
+        return Ok(result);
+    }
+
+
+    [Authorize(Roles = "Customer,Admin")]
     [HttpPost("{id}/cancel")]
     public async Task<IActionResult> CancelOrder(int id)
     {
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+
         var order = await _context.Orders
             .Include(o => o.Items)
-            .FirstOrDefaultAsync(o => o.Id == id);
+            .FirstOrDefaultAsync(o => o.Id == id && o.UserId == userId);
 
         if (order == null)
-            return NotFound();
+            return NotFound("Orden no encontrada");
 
-        if (order.Status == OrderStatus.Cancelled)
-            return BadRequest("La orden ya está cancelada");
+        if (order.Status != OrderStatus.Pending)
+            return BadRequest("Solo órdenes pendientes pueden cancelarse");
 
-        // Devolver stock
         foreach (var item in order.Items)
         {
             var product = await _context.Products.FindAsync(item.ProductId);
@@ -130,6 +161,7 @@ public class OrdersController : ControllerBase
         return Ok("Orden cancelada correctamente");
     }
 
+    [Authorize(Roles = "Customer,Admin")]
     [HttpPost("{id}/pay")]
     public async Task<IActionResult> PayOrder(int id)
     {
@@ -179,6 +211,25 @@ public class OrdersController : ControllerBase
             await transaction.RollbackAsync();
             return StatusCode(500, "Error procesando el pago");
         }
+    }
+
+    [Authorize(Roles = "Admin")]
+    [HttpPost("{id}/ship")]
+    public async Task<IActionResult> ShipOrder(int id)
+    {
+        var order = await _context.Orders.FindAsync(id);
+
+        if (order == null)
+            return NotFound("Orden no encontrada");
+
+        if (order.Status != OrderStatus.Paid)
+            return BadRequest("Solo órdenes pagadas pueden enviarse");
+
+        order.Status = OrderStatus.Shipped;
+
+        await _context.SaveChangesAsync();
+
+        return Ok("Orden enviada correctamente");
     }
 
 

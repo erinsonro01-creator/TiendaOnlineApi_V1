@@ -80,14 +80,44 @@ var app = builder.Build();
 
 using (var scope = app.Services.CreateScope())
 {
-    var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
+    var services = scope.ServiceProvider;
+
+    var roleManager = services.GetRequiredService<RoleManager<IdentityRole>>();
+    var userManager = services.GetRequiredService<UserManager<ApplicationUser>>();
 
     string[] roles = { "Admin", "Customer" };
 
+    // Crear Roles si no existen
     foreach (var role in roles)
     {
         if (!await roleManager.RoleExistsAsync(role))
+        {
             await roleManager.CreateAsync(new IdentityRole(role));
+        }
+    }
+
+    // Crear Admin por defecto si no existe
+    string adminEmail = "admin@tienda.com";
+    string adminPassword = "Admin123!";
+
+    var adminUser = await userManager.FindByEmailAsync(adminEmail);
+
+    if (adminUser == null)
+    {
+        var newAdmin = new ApplicationUser
+        {
+            UserName = adminEmail,
+            Email = adminEmail,
+            EmailConfirmed = true,
+            FullName = "Administrador Principal"
+        };
+
+        var result = await userManager.CreateAsync(newAdmin, adminPassword);
+
+        if (result.Succeeded)
+        {
+            await userManager.AddToRoleAsync(newAdmin, "Admin");
+        }
     }
 }
 
