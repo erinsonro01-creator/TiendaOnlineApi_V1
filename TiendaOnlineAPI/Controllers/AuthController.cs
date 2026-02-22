@@ -35,14 +35,14 @@ namespace TiendaOnlineAPI.Controllers
 
             var result = await _userManager.CreateAsync(user, dto.Password);
 
-            if (result.Succeeded)
-            {
-                await _userManager.AddToRoleAsync(user, "Customer");
-            }
-
-
             if (!result.Succeeded)
                 return BadRequest(result.Errors);
+
+            // Asignar rol Customer
+            var roleResult = await _userManager.AddToRoleAsync(user, "Customer");
+
+            if (!roleResult.Succeeded)
+                return BadRequest(roleResult.Errors);
 
             return Ok("Usuario registrado correctamente");
         }

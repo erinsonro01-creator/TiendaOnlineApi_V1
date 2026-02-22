@@ -20,6 +20,7 @@ public class OrdersController : ControllerBase
     }
 
     [Authorize(Roles = "Customer,Admin")]
+    [HttpPost("checkout")]
     public async Task<IActionResult> Checkout()
     {
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
@@ -102,7 +103,41 @@ public class OrdersController : ControllerBase
 
     }
 
-    [Authorize(Roles = "Customer,Admin")]
+    [Authorize(Roles = "Customer")]
+    [HttpGet("my-orders")]
+    public async Task<IActionResult> GetMyOrders()
+    {
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+
+        if (string.IsNullOrEmpty(userId))
+            return Unauthorized();
+
+        var orders = await _context.Orders
+            .Where(o => o.UserId == userId)
+            .Include(o => o.Items)
+                .ThenInclude(i => i.Product)
+            .OrderByDescending(o => o.CreatedAt)
+            .ToListAsync();
+
+        var result = orders.Select(o => new
+        {
+            o.Id,
+            o.CreatedAt,
+            o.TotalAmount,
+            Status = o.Status.ToString(),
+            Items = o.Items.Select(i => new
+            {
+                i.ProductId,
+                ProductName = i.Product.Name,
+                i.Quantity,
+                i.Price
+            })
+        });
+
+        return Ok(result);
+    }
+
+    [Authorize(Roles = "Admin")]
     [HttpGet("all")]
     public async Task<IActionResult> GetAllOrders()
     {
@@ -140,13 +175,13 @@ public class OrdersController : ControllerBase
 
         var order = await _context.Orders
             .Include(o => o.Items)
-            .FirstOrDefaultAsync(o => o.Id == id && o.UserId == userId);
+            .FirstOrDefaultAsync(o => o.Id == id);
 
         if (order == null)
             return NotFound("Orden no encontrada");
 
-        if (order.Status != OrderStatus.Pending)
-            return BadRequest("Solo órdenes pendientes pueden cancelarse");
+        if (!User.IsInRole("Admin") && order.UserId != userId)
+            return Forbid();
 
         foreach (var item in order.Items)
         {
