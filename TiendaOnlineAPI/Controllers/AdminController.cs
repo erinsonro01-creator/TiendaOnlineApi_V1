@@ -19,7 +19,7 @@ namespace TiendaOnlineAPI.Controllers
             _context = context;
         }
 
-        [HttpGet("Dashboard")]
+        [HttpGet("dashboard")]
         public async Task<IActionResult> GetDashboard()
         {
             // Ordenes por estado
